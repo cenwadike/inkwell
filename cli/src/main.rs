@@ -21,7 +21,6 @@ mod types;
 
 use analyzer::analyze_contract;
 use instrumentor::Instrumentor;
-use reporter::Reporter;
 
 #[derive(Parser)]
 #[command(name = "inkwell")]
@@ -252,39 +251,62 @@ fn run_analysis_mode(
     no_color: bool,
 ) -> Result<()> {
     let analysis = analyze_contract(source, function)?;
-    let reporter = Reporter::new(output_format, threshold, !no_color);
-    reporter.print_report(&analysis)?;
 
-    // Save JSON report
-    fs::write("ink-report.json", serde_json::to_string_pretty(&analysis)?)?;
+    // Use the struct from the module: reporter::Reporter
+    let reporter_inst = reporter::Reporter::new(output_format, threshold, !no_color);
+    reporter_inst.print_report(&analysis)?;
 
-    // Generate VS Code decorations
-    let vscode_dir = PathBuf::from(".inkwell");
-    fs::create_dir_all(&vscode_dir)?;
-    let decorations = reporter.generate_vscode_decorations(&analysis)?;
+    // 1. Find Project Root
+    let current_dir = std::env::current_dir()?;
+    let project_root = find_project_root(&current_dir).unwrap_or(current_dir);
+
+    // 2. Setup .inkwell directory in root
+    let inkwell_dir = project_root.join(".inkwell");
+    fs::create_dir_all(&inkwell_dir)?;
+
+    // 3. Generate the decorations variable
+    let decorations = reporter_inst.generate_vscode_decorations(&analysis)?;
+
+    // 4. Save JSON report and decorations
     fs::write(
-        vscode_dir.join("decorations.json"),
+        project_root.join("ink-report.json"),
+        serde_json::to_string_pretty(&analysis)?,
+    )?;
+
+    fs::write(
+        inkwell_dir.join("decorations.json"),
         serde_json::to_string_pretty(&decorations)?,
     )?;
 
-    if !no_color {
-        println!("\n{}", "━".repeat(60).dimmed());
-        println!("{} Reports saved:", "📊".bright_cyan());
-        println!("   • ink-report.json");
-        println!("   • .inkwell/decorations.json");
-        println!(
-            "\n{} Try {} for runtime profiling",
-            "💡".bright_yellow(),
-            "inkwell dip --profile".bright_white().bold()
-        );
+    // UI Feedback
+    let status_icon = if !no_color {
+        "📊".bright_cyan().to_string()
     } else {
-        println!("\nReports saved:");
-        println!("   • ink-report.json");
-        println!("   • .inkwell/decorations.json");
-        println!("\nTip: Use --profile for real ink measurement");
-    }
+        "=".to_string()
+    };
+    println!(
+        "\n{} Reports saved to {}:",
+        status_icon,
+        project_root.display()
+    );
+    println!("   • ink-report.json");
+    println!("   • .inkwell/decorations.json");
 
     Ok(())
+}
+
+/// Helper to find the directory containing Cargo.toml
+fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
+    let mut current = start_dir.to_path_buf();
+    loop {
+        if current.join("Cargo.toml").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    None
 }
 
 async fn run_profiling_mode(

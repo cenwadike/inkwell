@@ -6,3 +6,6 @@ instrumented_contract.rs
 
 node_modules/
 package-lock.json
+out/
+*.vsix
+.inkwell/
