@@ -3,11 +3,11 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use syn::BinOp;
 use syn::{Expr, ExprMethodCall, ImplItem, ItemImpl, Stmt, parse_file, visit::Visit};
-
+use std::path::PathBuf;
 use crate::types::*;
 
 /// Analyze a Rust contract and estimate ink consumption
-pub fn analyze_contract(source: &str, target_function: Option<&str>) -> Result<ContractAnalysis> {
+pub fn analyze_contract(source: &str, target_function: Option<&str>, file_path_rel: PathBuf) -> Result<ContractAnalysis> {
     let ast = parse_file(source).context("Failed to parse Rust file")?;
 
     let mut visitor = ContractVisitor::new(target_function);
@@ -17,7 +17,8 @@ pub fn analyze_contract(source: &str, target_function: Option<&str>) -> Result<C
 
     Ok(ContractAnalysis {
         contract_name,
-        file: "src/lib.rs".to_string(),
+        // Use the provided path dynamically
+        file: file_path_rel.to_string_lossy().into_owned(),
         functions: visitor.functions,
     })
 }

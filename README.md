@@ -1,7 +1,7 @@
 # Inkwell
 Inkwell is a profiler for Arbitrum Stylus smart contracts. Analyze gas consumption, identify optimization opportunities, and visualize costs directly in your editor.
 
-## Features
+## 
 
 - 🔍 **Accurate Ink Profiling** - Analyze ink consumption for Stylus contracts
 - 🔥 **Hotspot Detection** - Identify expensive operations automatically  

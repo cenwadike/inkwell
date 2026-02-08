@@ -133,14 +133,23 @@ function updateDecorationsForEditor(editor: vscode.TextEditor) {
         (data) => {
             try {
                 const result = JSON.parse(data.toString());
-                decorationManager.applyDecorations(editor, result);
-                updateStatusBar(result);
+
+                // Only apply if the file paths match
+                // The 'result' object needs to contain the path of the profiled file
+                if (result && result.filePath === editor.document.uri.fsPath) {
+                    decorationManager.applyDecorations(editor, result);
+                    updateStatusBar(result);
+                }
+
             } catch (error) {
                 console.error('Failed to parse decorations:', error);
             }
         },
         () => {
             // File doesn't exist, ignore
+            // You might want to clear decorations here for non-profiled files
+            decorationManager.clearAll();
+            statusBarItem.hide();
         }
     );
 }

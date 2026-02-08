@@ -141,7 +141,14 @@ async fn main() -> Result<()> {
                 )
                 .await?;
             } else {
-                run_analysis_mode(&source, function.as_deref(), &output, threshold, no_color)?;
+                run_analysis_mode(
+                    &file,
+                    &source,
+                    function.as_deref(),
+                    &output,
+                    threshold,
+                    no_color,
+                )?;
             }
         }
         Commands::Instrument {
@@ -244,30 +251,42 @@ fn print_instrumentation_summary(
 }
 
 fn run_analysis_mode(
-    source: &str,
+    source_path: &Path,   // Changed from &str to &Path
+    source_content: &str, // Add this to receive the actual code
     function: Option<&str>,
     output_format: &str,
     threshold: u64,
     no_color: bool,
 ) -> Result<()> {
-    let analysis = analyze_contract(source, function)?;
+    // 1. Initialize Paths
+    // No need to call read_to_string here anymore, we passed it in!
 
-    // Use the struct from the module: reporter::Reporter
-    let reporter_inst = reporter::Reporter::new(output_format, threshold, !no_color);
-    reporter_inst.print_report(&analysis)?;
-
-    // 1. Find Project Root
     let current_dir = std::env::current_dir()?;
-    let project_root = find_project_root(&current_dir).unwrap_or(current_dir);
+    let project_root = find_project_root(&current_dir).unwrap_or(current_dir.clone());
 
-    // 2. Setup .inkwell directory in root
+    // 2. Calculate relative path correctly
+    let absolute_source =
+        fs::canonicalize(source_path).context("Failed to get absolute path of source")?;
+
+    let relative_path = absolute_source
+        .strip_prefix(&project_root)
+        .unwrap_or(&absolute_source)
+        .to_path_buf();
+
+    // 3. Run Analysis (using the content we passed in)
+    let analysis = analyze_contract(source_content, function, relative_path)?;
+
+    // ... (rest of your logic for reporter and saving files remains the same)
+
+    // 5. Setup .inkwell directory in root
     let inkwell_dir = project_root.join(".inkwell");
     fs::create_dir_all(&inkwell_dir)?;
 
-    // 3. Generate the decorations variable
+    let reporter_inst = reporter::Reporter::new(output_format, threshold, !no_color);
+    reporter_inst.print_report(&analysis)?;
+
     let decorations = reporter_inst.generate_vscode_decorations(&analysis)?;
 
-    // 4. Save JSON report and decorations
     fs::write(
         project_root.join("ink-report.json"),
         serde_json::to_string_pretty(&analysis)?,
@@ -277,20 +296,6 @@ fn run_analysis_mode(
         inkwell_dir.join("decorations.json"),
         serde_json::to_string_pretty(&decorations)?,
     )?;
-
-    // UI Feedback
-    let status_icon = if !no_color {
-        "📊".bright_cyan().to_string()
-    } else {
-        "=".to_string()
-    };
-    println!(
-        "\n{} Reports saved to {}:",
-        status_icon,
-        project_root.display()
-    );
-    println!("   • ink-report.json");
-    println!("   • .inkwell/decorations.json");
 
     Ok(())
 }
