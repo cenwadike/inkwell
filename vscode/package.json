@@ -1,0 +1,72 @@
+{
+    "name": "inkwell",
+    "displayName": "Inkwell - Stylus Ink Profiler",
+    "description": "Ink profiler for Stylus smart contracts",
+    "version": "0.1.0",
+    "publisher": "inkwell",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters"
+    ],
+    "activationEvents": [
+        "onLanguage:rust",
+        "workspaceContains:**/Cargo.toml"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "inkwell.profileCurrentFile",
+                "title": "Inkwell: Profile Current File"
+            },
+            {
+                "command": "inkwell.clearDecorations",
+                "title": "Inkwell: Clear Decorations"
+            },
+            {
+                "command": "inkwell.toggleAutoProfile",
+                "title": "Inkwell: Toggle Auto-Profile on Save"
+            }
+        ],
+        "configuration": {
+            "title": "Inkwell",
+            "properties": {
+                "inkwell.autoProfile": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically profile on file save"
+                },
+                "inkwell.decorations.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show inline decorations"
+                },
+                "inkwell.decorations.showGutterIcons": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show gutter icons for hotspots"
+                },
+                "inkwell.cliPath": {
+                    "type": "string",
+                    "default": "inkwell",
+                    "description": "Path to inkwell CLI executable"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@types/vscode": "^1.85.0",
+        "@vscode/vsce": "^2.22.0",
+        "typescript": "^5.3.2"
+    }
+}

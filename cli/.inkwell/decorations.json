@@ -1,0 +1,249 @@
+{
+  "file": "src/lib.rs",
+  "function": "transfer",
+  "total_ink": 17400000,
+  "gas_equivalent": 1740,
+  "decorations": {
+    "inline": [
+      {
+        "line": 2,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 2,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 2,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 4,
+        "text": " 💰 1.5MK ink (9%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 4,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 4,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.5MK ink (9%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 5,
+        "text": " 💰 1.2MK ink (7%) 🔥",
+        "color": "high"
+      },
+      {
+        "line": 2,
+        "text": " 🐛 DRY NIB: 3600000 ink wasted (32→64 bytes)",
+        "color": "error"
+      }
+    ],
+    "gutter": [
+      {
+        "line": 2,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 2,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 2,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 4,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 4,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 4,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 5,
+        "icon": "flame",
+        "severity": "high"
+      },
+      {
+        "line": 2,
+        "icon": "bug",
+        "severity": "error"
+      },
+      {
+        "line": 2,
+        "icon": "lightbulb",
+        "severity": "warning"
+      }
+    ],
+    "hovers": [
+      {
+        "line": 2,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (get())`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 2,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (direct)`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 2,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_field_access`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 4,
+        "markdown": "### 💰 Ink Cost: 1500000 (9%)\n\n**Operation:** `storage_write (write())`  \n**Category:** storage_write  \n**Severity:** high"
+      },
+      {
+        "line": 4,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (direct)`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 4,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_field_access`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (get())`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1500000 (9%)\n\n**Operation:** `storage_write (write())`  \n**Category:** storage_write  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (direct)`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_field_access`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (get())`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (get())`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_read (direct)`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 5,
+        "markdown": "### 💰 Ink Cost: 1200000 (7%)\n\n**Operation:** `storage_field_access`  \n**Category:** storage_read  \n**Severity:** high"
+      },
+      {
+        "line": 2,
+        "markdown": "### 🐛 DRY NIB BUG DETECTED\n\n**Operation:** `repeated storage_read: self.balances`  \n**Actual return:** 32 bytes  \n**Buffer allocated:** 64 bytes  \n**Wastage:** 32 bytes  \n\n**Ink overcharge:** 3600000 (300.0%)  \n\n💡 **Mitigation:** Cache `self.balances` in a local variable. Repeated host calls are a major dry-nib source (each .get() incurs buffer allocation overhead)."
+      }
+    ],
+    "code_actions": [
+      {
+        "line": 2,
+        "title": "🐛 Fix dry nib bug: repeated storage_read: self.balances",
+        "replacement": {
+          "start_line": 2,
+          "end_line": 2,
+          "new_text": "// Cache `self.balances` in a local variable. Repeated host calls are a major dry-nib source (each .get() incurs buffer allocation overhead)."
+        }
+      },
+      {
+        "line": 2,
+        "title": "💡 Cache repeated storage read: self.balances",
+        "replacement": {
+          "start_line": 2,
+          "end_line": 2,
+          "new_text": "let cached_balances = self.balances.get(...);\n// Use cached_balances instead"
+        }
+      }
+    ]
+  }
+}
