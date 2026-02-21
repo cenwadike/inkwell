@@ -1,13 +1,16 @@
 [package]
-name = "cli"
+name = "stylus-inkwell"
 version = "0.1.0"
 edition = "2024"
-authors = ["cenwadike"]
+authors = ["Kombi <cenwadike@gmail.com>"]
 description = "Ink profiler for Stylus smart contracts"
-license = "Apache License"
+license = "Apache-2.0"
+repository = "https://github.com/cenwadike/inkwell"
+keywords = ["ink", "stylus", "smart-contract", "profiler", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "inkwell"
+name = "stylus-inkwell"
 path = "src/main.rs"
 
 [dependencies]

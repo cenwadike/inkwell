@@ -21,7 +21,13 @@ mod types;
 
 use analyzer::analyze_contract;
 use instrumentor::Instrumentor;
+use types::{Decorations, VsCodeDecorations};
 
+/// Command-line interface for Inkwell — a Stylus contract ink/gas analysis & profiling tool.
+///
+/// Subcommands:
+///   dip        → static analysis of ink consumption patterns
+///   instrument → insert runtime ink measurement probes
 #[derive(Parser)]
 #[command(name = "inkwell")]
 #[command(about = "🧪 Inkwell - Dive deep into Stylus contract gas analysis")]
@@ -31,72 +37,77 @@ struct Cli {
     command: Commands,
 }
 
+/// Available subcommands.
 #[derive(Subcommand)]
 enum Commands {
-    /// 🔬 Dip into your contract - analyze ink consumption patterns
+    /// 🔬 Dip into your contract - analyze ink consumption patterns, detect dry-nib bugs,
+    /// suggest caching optimizations, and generate VS Code decorations.
     #[command(alias = "d")]
     Dip {
-        /// Path to the Rust contract file (usually src/lib.rs)
+        /// Path to the Rust contract file (usually `src/lib.rs`)
         #[arg(value_name = "FILE")]
         file: PathBuf,
 
-        /// Target specific function for analysis
+        /// Target specific function for analysis (if omitted, analyzes all public/external)
         #[arg(short, long)]
         function: Option<String>,
 
-        /// Output format: compact, detailed, json
+        /// Output format: compact (default), detailed, json
         #[arg(short, long, default_value = "compact")]
         output: String,
 
-        /// Ink threshold for highlighting operations
+        /// Ink threshold for highlighting operations in compact view (default: 100_000)
         #[arg(long, default_value = "100000")]
         threshold: u64,
 
-        /// Disable colored output
+        /// Disable colored terminal output
         #[arg(long)]
         no_color: bool,
 
-        /// Run real ink profiling on-chain (requires --rpc-url and --private-key)
+        /// Enable real on-chain ink profiling (requires --rpc-url and --private-key)
         #[arg(short, long)]
         profile: bool,
 
-        /// RPC endpoint for profiling mode
+        /// RPC endpoint for profiling mode (default: local Stylus dev node)
         #[arg(long, default_value = "http://localhost:8547")]
         rpc_url: String,
 
-        /// Private key for deploying and calling contract (profiling mode only)
+        /// Private key (hex) for deploying and calling the contract in profiling mode
         #[arg(long)]
         private_key: Option<String>,
 
-        /// Chain ID for transactions (profiling mode only)
+        /// Chain ID to use for transactions (default: 1337 for local dev)
         #[arg(long, default_value = "1337")]
         chain_id: u64,
 
-        /// 0x-prefixed hex calldata for profiling transaction
+        /// 0x-prefixed hex calldata for the profiling transaction
         #[arg(long)]
         calldata: Option<String>,
 
-        /// Value to send with profiling transaction (in wei)
+        /// Value (in wei) to send with the profiling transaction
         #[arg(long, default_value = "0")]
         value: String,
 
-        /// Save instrumented code to this file (profiling mode only)
+        /// Where to save the instrumented contract source (profiling mode only)
         #[arg(long, default_value = "instrumented_contract.rs")]
         instrumented_output: PathBuf,
     },
 
-    /// 🧬 Instrument your contract with ink tracking probes
+    /// 🧬 Instrument your contract with runtime ink tracking probes.
+    ///
+    /// Adds measurement points around storage/host calls; when compiled with
+    /// `--features ink-profiling`, produces runtime ink usage reports and dry-nib warnings.
     #[command(alias = "i")]
     Instrument {
-        /// Path to the Rust contract file
+        /// Path to the Rust contract file to instrument
         #[arg(value_name = "FILE")]
         file: PathBuf,
 
-        /// Output path for instrumented contract
+        /// Output path for the instrumented contract source
         #[arg(short, long, default_value = "instrumented_contract.rs")]
         output: PathBuf,
 
-        /// Disable colored output
+        /// Disable colored terminal output
         #[arg(long)]
         no_color: bool,
     },
@@ -168,6 +179,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Runs the instrumentation-only mode: adds probes and saves the modified source.
 fn run_instrumentation_mode(source: &str, output_path: &Path, no_color: bool) -> Result<()> {
     let mut instrumentor = Instrumentor::new();
     let instrumented = instrumentor.instrument(source)?;
@@ -203,6 +215,7 @@ fn run_instrumentation_mode(source: &str, output_path: &Path, no_color: bool) ->
     Ok(())
 }
 
+/// Prints a summary of how many probes were injected and their breakdown by type.
 fn print_instrumentation_summary(
     no_color: bool,
     total: usize,
@@ -250,42 +263,97 @@ fn print_instrumentation_summary(
     }
 }
 
+/// Runs static analysis mode: parses, analyzes ink usage, prints report,
+/// saves JSON output, and generates VS Code decoration data.
 fn run_analysis_mode(
-    source_path: &Path,   // Changed from &str to &Path
-    source_content: &str, // Add this to receive the actual code
+    source_path: &Path,
+    source_content: &str,
     function: Option<&str>,
     output_format: &str,
     threshold: u64,
     no_color: bool,
 ) -> Result<()> {
-    // 1. Initialize Paths
-    // No need to call read_to_string here anymore, we passed it in!
+    let absolute_source = fs::canonicalize(source_path).with_context(|| {
+        format!(
+            "Failed to canonicalize source path: {}",
+            source_path.display()
+        )
+    })?;
 
-    let current_dir = std::env::current_dir()?;
-    let project_root = find_project_root(&current_dir).unwrap_or(current_dir.clone());
+    let source_dir = absolute_source
+        .parent()
+        .context("Source file has no parent directory")?
+        .to_path_buf();
 
-    // 2. Calculate relative path correctly
-    let absolute_source =
-        fs::canonicalize(source_path).context("Failed to get absolute path of source")?;
+    eprintln!(
+        "{} Analyzed file (absolute): {}",
+        "🔍".bright_blue(),
+        absolute_source.display()
+    );
+    eprintln!(
+        "{} Resolved source directory: {}",
+        "📂".bright_blue(),
+        source_dir.display()
+    );
+
+    let project_root = find_project_root(&source_dir)
+        .or_else(|| {
+            eprintln!(
+                "{} No Cargo.toml found → falling back to source directory",
+                "⚠️".bright_yellow()
+            );
+            Some(source_dir.clone())
+        })
+        .unwrap_or_else(|| {
+            eprintln!(
+                "{} Using current dir as last resort fallback",
+                "⚠️".bright_yellow()
+            );
+            std::env::current_dir().unwrap_or_default()
+        });
+
+    eprintln!(
+        "{} Using project root for analysis/expansion: {}",
+        "📍".bright_cyan(),
+        project_root.display()
+    );
 
     let relative_path = absolute_source
         .strip_prefix(&project_root)
         .unwrap_or(&absolute_source)
         .to_path_buf();
 
-    // 3. Run Analysis (using the content we passed in)
-    let analysis = analyze_contract(source_content, function, relative_path)?;
+    let source_to_analyze = get_analyzable_source(source_content, &absolute_source)?;
 
-    // ... (rest of your logic for reporter and saving files remains the same)
+    let analysis = match analyze_contract(&source_to_analyze, function, relative_path.clone()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("\n{}", "ERROR during analysis:".bright_red().bold());
+            eprintln!("{:#}", e);
+            eprintln!("\nIf using sol! macros, ensure 'cargo +nightly expand' works.");
+            std::process::exit(1);
+        }
+    };
 
-    // 5. Setup .inkwell directory in root
     let inkwell_dir = project_root.join(".inkwell");
     fs::create_dir_all(&inkwell_dir)?;
 
-    let reporter_inst = reporter::Reporter::new(output_format, threshold, !no_color);
-    reporter_inst.print_report(&analysis)?;
+    let reporter = reporter::Reporter::new(output_format, threshold, !no_color);
+    reporter.print_report(&analysis)?;
 
-    let decorations = reporter_inst.generate_vscode_decorations(&analysis)?;
+    let decorations = match reporter.generate_vscode_decorations(&analysis) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Warning: Could not generate decorations: {}", e);
+            VsCodeDecorations {
+                file: analysis.file.clone(),
+                function: "analysis_partial".to_string(),
+                total_ink: 0,
+                gas_equivalent: 0,
+                decorations: Decorations::default(),
+            }
+        }
+    };
 
     fs::write(
         project_root.join("ink-report.json"),
@@ -297,10 +365,17 @@ fn run_analysis_mode(
         serde_json::to_string_pretty(&decorations)?,
     )?;
 
+    if !no_color {
+        println!(
+            "\n{}",
+            "Analysis complete → decorations saved".bright_green()
+        );
+    }
+
     Ok(())
 }
 
-/// Helper to find the directory containing Cargo.toml
+/// Helper to locate the nearest `Cargo.toml` upward from a starting directory.
 fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     let mut current = start_dir.to_path_buf();
     loop {
@@ -314,6 +389,13 @@ fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Runs on-chain profiling mode:
+/// 1. Instruments the contract
+/// 2. Builds WASM with ink-profiling feature
+/// 3. Deploys to the chain
+/// 4. Executes provided calldata (if any)
+/// 5. Calls `get_ink_report()` and prints the runtime report
+#[allow(clippy::too_many_arguments)]
 async fn run_profiling_mode(
     original_file: &Path,
     source: &str,
@@ -346,7 +428,7 @@ async fn run_profiling_mode(
         .context("--private-key is required for profiling mode")?;
 
     let pk_bytes = hex::decode(privkey_hex.trim_start_matches("0x"))?;
-    let signer = PrivateKeySigner::from_slice(&pk_bytes)?.with_chain_id(Some(chain_id.into()));
+    let signer = PrivateKeySigner::from_slice(&pk_bytes)?.with_chain_id(Some(chain_id));
     let wallet = EthereumWallet::from(signer);
 
     let provider = ProviderBuilder::new()
@@ -432,7 +514,7 @@ async fn run_profiling_mode(
         println!("   ✓ Contract deployed at: {}", contract_addr);
     }
 
-    // Step 4: Execute profiling transaction
+    // Step 4: Execute profiling transaction (if calldata provided)
     if let Some(calldata_hex) = &calldata {
         if !no_color {
             println!(
@@ -466,18 +548,16 @@ async fn run_profiling_mode(
                 tx_receipt.transaction_hash
             );
         }
+    } else if !no_color {
+        println!(
+            "\n{} No --calldata provided, skipping execution",
+            "⏭️".yellow()
+        );
     } else {
-        if !no_color {
-            println!(
-                "\n{} No --calldata provided, skipping execution",
-                "⏭️".yellow()
-            );
-        } else {
-            println!("\n[4/4] No --calldata provided, skipping execution");
-        }
+        println!("\n[4/4] No --calldata provided, skipping execution");
     }
 
-    // Step 5: Fetch ink report
+    // Step 5: Fetch and display ink report via get_ink_report()
     if !no_color {
         println!("\n{} Fetching ink report...", "📊".bright_cyan());
     } else {
@@ -509,17 +589,53 @@ async fn run_profiling_mode(
     Ok(())
 }
 
+/// Prepares a temporary Cargo project with the instrumented source for building.
 fn prepare_temp_project(original: &Path, instrumented: &Path, temp: &Path) -> Result<()> {
     let cargo_toml_src = original.parent().unwrap().join("Cargo.toml");
     if !cargo_toml_src.exists() {
         anyhow::bail!("Cargo.toml not found next to source file");
     }
-    fs::copy(cargo_toml_src, temp.join("Cargo.toml"))?;
+
+    // Read original Cargo.toml
+    let cargo_content = fs::read_to_string(&cargo_toml_src)?;
+
+    // Parse as TOML (using toml crate you already have)
+    let mut cargo_toml: toml::Value = cargo_content
+        .parse()
+        .context("Failed to parse original Cargo.toml")?;
+
+    // Ensure [features] table exists
+    if cargo_toml.get("features").is_none() {
+        cargo_toml["features"] = toml::Value::Table(toml::map::Map::new());
+    }
+
+    // Add ink-profiling if not already present
+    let features = cargo_toml
+        .get_mut("features")
+        .and_then(|f| f.as_table_mut())
+        .context("Failed to access [features] table")?;
+
+    if !features.contains_key("ink-profiling") {
+        features.insert(
+            "ink-profiling".to_string(),
+            toml::Value::Array(vec![]), // empty array = just the feature flag
+        );
+        eprintln!(
+            "{} Auto-added feature `ink-profiling` to temp Cargo.toml",
+            "🔧".bright_cyan()
+        );
+    }
+
+    // Write modified Cargo.toml to temp project
+    fs::write(temp.join("Cargo.toml"), cargo_toml.to_string())?;
+
     fs::create_dir(temp.join("src"))?;
     fs::copy(instrumented, temp.join("src/lib.rs"))?;
+
     Ok(())
 }
 
+/// Extracts crate name from Cargo.toml (needed for locating the output .wasm)
 fn get_crate_name_from_cargo_toml(cargo_toml_path: &Path) -> Result<String> {
     let content = fs::read_to_string(cargo_toml_path).context("Failed to read Cargo.toml")?;
 
@@ -537,6 +653,7 @@ fn get_crate_name_from_cargo_toml(cargo_toml_path: &Path) -> Result<String> {
     Ok(name)
 }
 
+/// Builds the WASM binary in a temporary directory using cargo +nightly.
 fn build_wasm_in_temp(project: &Path) -> Result<PathBuf> {
     let output = Command::new("cargo")
         .current_dir(project)
@@ -570,4 +687,163 @@ fn build_wasm_in_temp(project: &Path) -> Result<PathBuf> {
     }
 
     Ok(wasm)
+}
+
+/// Attempts to produce analyzable source code:
+/// - If no sol! / Stylus macros detected → returns original
+/// - Otherwise tries `cargo +nightly expand` in the project root
+/// - Falls back to original source on failure
+fn get_analyzable_source(original_source: &str, analyzed_file_abs: &Path) -> Result<String> {
+    let source_dir = analyzed_file_abs
+        .parent()
+        .context("Analyzed file has no parent directory")?
+        .to_path_buf();
+
+    eprintln!(
+        "{} Resolved source directory for expansion: {}",
+        "📂".bright_blue(),
+        source_dir.display()
+    );
+
+    let uses_sol_macros = original_source.contains("sol_storage!")
+        || original_source.contains("sol_interface!")
+        || original_source.contains("sol!")
+        || original_source.contains("#[entrypoint]")
+        || original_source.contains("#[public]");
+
+    if !uses_sol_macros {
+        eprintln!(
+            "{} No sol!/Stylus macros detected → using original source",
+            "ℹ️".bright_cyan()
+        );
+        return Ok(original_source.to_string());
+    }
+
+    eprintln!(
+        "{} Detected sol! / Stylus macro usage → attempting automatic expansion",
+        "ℹ️".bright_cyan()
+    );
+
+    let mut current = source_dir.clone();
+    let mut found_root: Option<PathBuf> = None;
+
+    loop {
+        let cargo_path = current.join("Cargo.toml");
+        eprintln!("  Checking: {}", cargo_path.display());
+
+        if cargo_path.is_file() {
+            found_root = Some(current.clone());
+            eprintln!("  → Found Cargo.toml here: {}", current.display());
+            break;
+        }
+
+        if !current.pop() {
+            eprintln!("  Reached filesystem root → no Cargo.toml found");
+            break;
+        }
+    }
+
+    let contract_project_root = match found_root {
+        Some(root) => root,
+        None => {
+            eprintln!(
+                "{} No Cargo.toml found in parent directories → falling back to source directory",
+                "⚠️".bright_yellow()
+            );
+            source_dir
+        }
+    };
+
+    eprintln!(
+        "{} Using project root for expansion: {}",
+        "📍".bright_cyan(),
+        contract_project_root.display()
+    );
+
+    let cargo_toml_path = contract_project_root.join("Cargo.toml");
+
+    let is_lib_crate = if cargo_toml_path.is_file() {
+        let content = fs::read_to_string(&cargo_toml_path).unwrap_or_default();
+        content.contains("[lib]")
+            || content.contains("crate-type")
+            || content.contains("cdylib")
+            || content.contains("wasm32-unknown-unknown")
+    } else {
+        false
+    };
+
+    let mut cmd = Command::new("cargo");
+    cmd.arg("+nightly")
+        .arg("expand")
+        .current_dir(&contract_project_root);
+
+    if is_lib_crate {
+        cmd.arg("--lib");
+        eprintln!(
+            "{} Detected library crate → using --lib",
+            "🧩".bright_magenta()
+        );
+    } else {
+        cmd.arg("--bin");
+        if cargo_toml_path.is_file() {
+            if let Ok(name) = get_crate_name_from_cargo_toml(&cargo_toml_path) {
+                cmd.arg(&name);
+                eprintln!("{} Using --bin {}", "🧩".bright_magenta(), name);
+            } else {
+                eprintln!(
+                    "{} Using --bin (no specific name found)",
+                    "🧩".bright_magenta()
+                );
+            }
+        } else {
+            eprintln!(
+                "{} Using --bin (no Cargo.toml → optimistic)",
+                "🧩".bright_magenta()
+            );
+        }
+    }
+
+    let output = cmd
+        .output()
+        .context("Failed to execute cargo +nightly expand. Is rust nightly installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        eprintln!(
+            "{} cargo expand failed in directory: {}\n{}\nFalling back to original source.",
+            "⚠️".bright_red(),
+            contract_project_root.display(),
+            stderr
+        );
+        return Ok(original_source.to_string());
+    }
+
+    let expanded =
+        String::from_utf8(output.stdout).context("cargo expand output is not valid UTF-8")?;
+
+    let cleaned: String = expanded
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("//")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if cleaned.len() < 500 {
+        eprintln!(
+            "{} Expanded code seems suspiciously small ({} bytes) — falling back to original",
+            "⚠️".bright_yellow(),
+            cleaned.len()
+        );
+        return Ok(original_source.to_string());
+    }
+
+    eprintln!(
+        "{} Successfully expanded code ({} bytes)",
+        "✓".bright_green(),
+        cleaned.len()
+    );
+
+    Ok(cleaned)
 }

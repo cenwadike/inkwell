@@ -1,15 +1,33 @@
 // src/reporter.rs
 use anyhow::Result;
 use colored::Colorize;
+use std::collections::HashMap;
 
 use crate::types::*;
 
+/// Reporter for formatting and displaying contract ink analysis results.
+///
+/// Supports multiple output formats:
+/// - `compact`   : concise terminal output with colored highlights (default)
+/// - `detailed`  : compact + category breakdown table
+/// - `json`      : machine-readable JSON dump
+///
+/// Also capable of generating VS Code decoration data (inline text, gutter icons,
+/// hover tooltips, code actions) for editor integration.
 pub struct Reporter {
+    /// Output format requested by the user ("compact", "detailed", "json")
     output_format: String,
+    /// Whether ANSI color codes should be used in terminal output
     use_color: bool,
 }
 
 impl Reporter {
+    /// Creates a new reporter with the specified format and color preference.
+    ///
+    /// # Parameters
+    /// - `output_format` - Desired format ("compact", "detailed", "json")
+    /// - `_threshold`    - Currently unused (reserved for future filtering)
+    /// - `use_color`     - Enable/disable colored terminal output
     pub fn new(output_format: &str, _threshold: u64, use_color: bool) -> Self {
         Self {
             output_format: output_format.to_string(),
@@ -17,6 +35,9 @@ impl Reporter {
         }
     }
 
+    /// Prints the analysis report in the user-selected format.
+    ///
+    /// Delegates to the appropriate format-specific printer.
     pub fn print_report(&self, analysis: &ContractAnalysis) -> Result<()> {
         match self.output_format.as_str() {
             "json" => self.print_json(analysis),
@@ -25,11 +46,20 @@ impl Reporter {
         }
     }
 
+    /// Outputs the full analysis as pretty-printed JSON to stdout.
     fn print_json(&self, analysis: &ContractAnalysis) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(analysis)?);
         Ok(())
     }
 
+    /// Prints a compact, human-readable terminal report optimized for quick scanning.
+    ///
+    /// Features:
+    /// - Header with contract overview
+    /// - Per-function summary (ink usage, gas equivalent)
+    /// - Highlighted dry-nib bugs (if any)
+    /// - Expensive lines grouped by impact
+    /// - Optimization suggestions
     fn print_compact(&self, analysis: &ContractAnalysis) -> Result<()> {
         if self.use_color {
             println!("\n{}", "🧪 INKWELL STAIN REPORT".bright_cyan().bold());
@@ -39,140 +69,17 @@ impl Reporter {
             println!("{}", "=".repeat(60));
         }
 
-        for func in &analysis.functions {
+        for func in analysis.functions.values() {
             self.print_function_compact(func)?;
         }
 
         Ok(())
     }
 
-    fn print_function_compact(&self, func: &FunctionAnalysis) -> Result<()> {
-        if self.use_color {
-            println!("\n🎯 Function: {}", func.signature.bright_white());
-            println!(
-                "💰 Total Ink: {} (≈ {} gas)",
-                format!("{:?}", func.total_ink).bright_yellow(),
-                func.gas_equivalent.to_string().bright_yellow()
-            );
-            println!("\n{}", "━".repeat(60).dimmed());
-        } else {
-            println!("\nFunction: {}", func.signature);
-            println!(
-                "Total Ink: {:?} (≈ {} gas)",
-                func.total_ink, func.gas_equivalent
-            );
-            println!("\n{}", "=".repeat(60));
-        }
-
-        // Print dry nib bugs FIRST (highest priority)
-        if !func.dry_nib_bugs.is_empty() {
-            self.print_dry_nib_bugs(&func.dry_nib_bugs)?;
-        }
-
-        // Print hotspots
-        if !func.hotspots.is_empty() {
-            if self.use_color {
-                println!(
-                    "\n{}",
-                    "🔥 HOTSPOTS (Operations > 1M ink)".bright_red().bold()
-                );
-                println!();
-            } else {
-                println!("\nHOTSPOTS (Operations > 1M ink)\n");
-            }
-
-            for hotspot in &func.hotspots {
-                if let Some(op) = func.operations.iter().find(|o| o.line == hotspot.line) {
-                    let bar_width = (op.percentage / 2.0) as usize;
-                    let bar = "█".repeat(bar_width);
-
-                    if self.use_color {
-                        println!(
-                            "  Line {:3}  │  {:30}  {}  {}  {:>3}%",
-                            op.line.to_string().bright_white(),
-                            truncate(&op.operation, 30),
-                            format!("{:.1}M", op.ink as f64 / 1_000_000.0).bright_yellow(),
-                            bar.bright_red(),
-                            format!("{:.0}", op.percentage).bright_white()
-                        );
-                    } else {
-                        println!(
-                            "  Line {:3}  |  {:30}  {:.1}M  {}  {:>3}%",
-                            op.line,
-                            truncate(&op.operation, 30),
-                            op.ink as f64 / 1_000_000.0,
-                            bar,
-                            format!("{:.0}", op.percentage)
-                        );
-                    }
-                }
-            }
-        }
-
-        // Print optimizations
-        if !func.optimizations.is_empty() {
-            if self.use_color {
-                println!("\n{}", "━".repeat(60).dimmed());
-                println!(
-                    "\n{}",
-                    "💡 OPTIMIZATION OPPORTUNITIES".bright_green().bold()
-                );
-                println!();
-            } else {
-                println!("\n{}", "=".repeat(60));
-                println!("\nOPTIMIZATION OPPORTUNITIES\n");
-            }
-
-            for opt in &func.optimizations {
-                if self.use_color {
-                    println!(
-                        "  {} │ {}",
-                        format!("Line {}", opt.line).bright_white(),
-                        opt.title.bright_yellow()
-                    );
-                    println!("  {} │ {}", " ".repeat(8), opt.description.dimmed());
-                    println!("  {} │", " ".repeat(8));
-                    println!("  {} │ Suggestion:", " ".repeat(8));
-                    for line in opt.suggested_code.lines() {
-                        println!("  {} │   {}", " ".repeat(8), line.green());
-                    }
-                    println!("  {} │", " ".repeat(8));
-                    println!(
-                        "  {} │ 💰 Potential savings: ~{}K ink ({}% reduction)",
-                        " ".repeat(8),
-                        opt.estimated_savings_ink / 1000,
-                        format!("{:.0}", opt.estimated_savings_percentage).bright_cyan()
-                    );
-                    println!();
-                } else {
-                    println!("  Line {} | {}", opt.line, opt.title);
-                    println!("  {}   | {}", " ".repeat(4), opt.description);
-                    println!("  {}   |", " ".repeat(4));
-                    println!("  {}   | Suggestion:", " ".repeat(4));
-                    for line in opt.suggested_code.lines() {
-                        println!("  {}   |   {}", " ".repeat(4), line);
-                    }
-                    println!("  {}   |", " ".repeat(4));
-                    println!(
-                        "  {}   | Potential savings: ~{}K ink ({}% reduction)",
-                        " ".repeat(4),
-                        opt.estimated_savings_ink / 1000,
-                        format!("{:.0}", opt.estimated_savings_percentage)
-                    );
-                    println!();
-                }
-            }
-        }
-
-        if self.use_color {
-            println!("{}", "━".repeat(60).dimmed());
-        } else {
-            println!("{}", "=".repeat(60));
-        }
-
-        Ok(())
-    }
-
+    /// Prints detailed information about detected dry-nib overcharge bugs.
+    ///
+    /// Dry-nib bugs occur when host calls allocate/charge for more buffer space
+    /// than the actual data returned (common with small values in Stylus).
     fn print_dry_nib_bugs(&self, bugs: &[DryNibBug]) -> Result<()> {
         if self.use_color {
             println!("\n{}", "═".repeat(60).bright_magenta());
@@ -299,11 +206,11 @@ impl Reporter {
         Ok(())
     }
 
+    /// Prints a more verbose report including per-category ink usage statistics.
     fn print_detailed(&self, analysis: &ContractAnalysis) -> Result<()> {
-        // Similar to compact but with category breakdown
         self.print_compact(analysis)?;
 
-        for func in &analysis.functions {
+        for func in analysis.functions.values() {
             if !func.categories.is_empty() {
                 if self.use_color {
                     println!("\n{}", "📊 CATEGORY SUMMARY".bright_blue().bold());
@@ -325,7 +232,7 @@ impl Reporter {
                 for (category, stats) in &func.categories {
                     let icon = match category.as_str() {
                         "storage_write" | "storage_read" => "🔥",
-                        "evm_context" => "🐛", // Dry nib prone!
+                        "evm_context" => "🐛",
                         _ => "  ",
                     };
 
@@ -355,141 +262,236 @@ impl Reporter {
         Ok(())
     }
 
+    /// Generates decoration data suitable for a VS Code extension.
+    ///
+    /// Produces:
+    /// - Inline decorations (text shown after the line)
+    /// - Gutter icons (flame, warning, bug, lightbulb)
+    /// - Hover markdown tooltips
+    /// - Code actions (quick fixes / refactorings)
     pub fn generate_vscode_decorations(
         &self,
         analysis: &ContractAnalysis,
     ) -> Result<VsCodeDecorations> {
-        let func = &analysis.functions[0];
+        if analysis.functions.is_empty() {
+            return Ok(VsCodeDecorations {
+                file: analysis.file.clone(),
+                function: "no_functions_detected".to_string(),
+                total_ink: 0,
+                gas_equivalent: 0,
+                decorations: Decorations {
+                    inline: vec![],
+                    gutter: vec![],
+                    hovers: vec![],
+                    code_actions: vec![],
+                },
+            });
+        }
 
         let mut inline_decorations = Vec::new();
         let mut gutter_decorations = Vec::new();
         let mut hover_decorations = Vec::new();
         let mut code_actions = Vec::new();
 
-        // Generate decorations for operations
-        for op in &func.operations {
-            let color = match op.severity.as_str() {
-                "high" => "high",
-                "medium" => "medium",
-                _ => "low",
-            };
+        let total_ink: u64 = analysis.functions.values().map(|f| f.total_ink).sum();
+        let total_gas: u64 = analysis.functions.values().map(|f| f.gas_equivalent).sum();
 
-            let text = format!(
-                " 💰 {:.1}{}K ink ({}%){}",
-                if op.ink > 1_000_000 {
-                    op.ink as f64 / 1_000_000.0
+        for func in analysis.functions.values() {
+            let mut line_summary: HashMap<usize, LineSummary> = HashMap::new();
+
+            for op in &func.operations {
+                let entry = line_summary.entry(op.line).or_insert(LineSummary {
+                    total_ink: 0,
+                    op_count: 0,
+                    max_severity: "low".to_string(),
+                    operations: vec![],
+                    representative_name: String::new(),
+                });
+
+                entry.total_ink += op.ink;
+                entry.op_count += 1;
+                entry.operations.push(op);
+
+                if op.severity == "high" && entry.max_severity != "high" {
+                    entry.max_severity = "high".to_string();
+                } else if op.severity == "medium" && entry.max_severity == "low" {
+                    entry.max_severity = "medium".to_string();
+                }
+
+                if entry.representative_name.is_empty() && op.entity != "unknown" {
+                    entry.representative_name = format!("{}::{}", op.entity, op.operation);
+                } else if entry.representative_name.is_empty() {
+                    entry.representative_name = op.operation.clone();
+                }
+            }
+
+            for (line, summary) in line_summary {
+                let is_high = summary.max_severity == "high" || summary.total_ink >= 2_000_000;
+
+                let display_ink = if summary.total_ink >= 1_000_000 {
+                    format!("{:.1}M", summary.total_ink as f64 / 1_000_000.0)
                 } else {
-                    op.ink as f64 / 1_000.0
-                },
-                if op.ink > 1_000_000 { "M" } else { "" },
-                format!("{:.0}", op.percentage),
-                if op.severity == "high" { " 🔥" } else { "" }
-            );
+                    format!("{}K", summary.total_ink / 1000)
+                };
 
-            inline_decorations.push(InlineDecoration {
-                line: op.line,
-                text,
-                color: color.to_string(),
-            });
+                let percentage = if func.total_ink > 0 {
+                    summary.total_ink as f64 / func.total_ink as f64 * 100.0
+                } else {
+                    0.0
+                };
 
-            if op.ink > 1_000_000 {
-                gutter_decorations.push(GutterDecoration {
-                    line: op.line,
-                    icon: "flame".to_string(),
-                    severity: "high".to_string(),
+                let text = if summary.op_count <= 1 {
+                    format!("≈ {} ink  {:.0}%", display_ink, percentage)
+                } else {
+                    format!(
+                        "≈ {} ink  {:.0}% [{} ops]",
+                        display_ink, percentage, summary.op_count
+                    )
+                };
+
+                let color = match summary.max_severity.as_str() {
+                    "high" => "error",
+                    "medium" => "warning",
+                    _ => "info",
+                };
+
+                inline_decorations.push(InlineDecoration {
+                    line,
+                    text: if is_high {
+                        format!("{} 🔥", text)
+                    } else {
+                        text
+                    },
+                    color: color.to_string(),
+                });
+
+                if summary.total_ink >= 1_500_000 || summary.max_severity == "high" {
+                    gutter_decorations.push(GutterDecoration {
+                        line,
+                        icon: if summary.max_severity == "high" {
+                            "flame".to_string()
+                        } else {
+                            "warning".to_string()
+                        },
+                        severity: summary.max_severity.clone(),
+                    });
+                }
+
+                let mut hover_md = format!(
+                    "### Ink Usage on Line {}\n\n**Total:** {} ink  ({:.1}% of function)\n**Severity:** {}\n\n",
+                    line,
+                    summary.total_ink,
+                    percentage,
+                    summary.max_severity.to_uppercase()
+                );
+
+                if summary.operations.len() == 1 {
+                    let op = summary.operations[0];
+                    hover_md.push_str(&format!(
+                        "**Operation:** `{}`\n**Category:** {}\n**Ink:** {} ({}%)\n",
+                        op.operation, op.category, op.ink, op.percentage
+                    ));
+                } else {
+                    hover_md.push_str(&format!("**{} operations:**\n\n", summary.op_count));
+                    for (i, op) in summary.operations.iter().enumerate() {
+                        hover_md.push_str(&format!(
+                            "{}. `{}` — {} ink ({:.1}%)\n   Category: {} | Severity: {}\n",
+                            i + 1,
+                            op.operation,
+                            op.ink,
+                            op.percentage,
+                            op.category,
+                            op.severity
+                        ));
+                    }
+                }
+
+                hover_md.push_str(&format!("\n**Function:** `{}`", func.name));
+
+                hover_decorations.push(HoverDecoration {
+                    line,
+                    markdown: hover_md,
                 });
             }
 
-            let hover_md = format!(
-                "### 💰 Ink Cost: {:?} ({:.0}%)\n\n**Operation:** `{}`  \n**Category:** {}  \n**Severity:** {}",
-                op.ink, op.percentage, op.operation, op.category, op.severity
-            );
+            // Dry NIB bugs
+            for bug in &func.dry_nib_bugs {
+                let line = bug.line;
 
-            hover_decorations.push(HoverDecoration {
-                line: op.line,
-                markdown: hover_md,
-            });
-        }
+                inline_decorations.push(InlineDecoration {
+                    line,
+                    text: format!("DRY NIB: ~{}K ink wasted", bug.overcharge_estimate / 1000),
+                    color: "error".to_string(),
+                });
 
-        // Generate decorations for dry nib bugs
-        for bug in &func.dry_nib_bugs {
-            // Add special decoration
-            let bug_inline = InlineDecoration {
-                line: bug.line,
-                text: format!(
-                    " 🐛 DRY NIB: {} ink wasted ({}→{} bytes)",
-                    bug.overcharge_estimate, bug.actual_return_size, bug.buffer_allocated
-                ),
-                color: "error".to_string(),
-            };
-            inline_decorations.push(bug_inline);
+                gutter_decorations.push(GutterDecoration {
+                    line,
+                    icon: "bug".to_string(),
+                    severity: "error".to_string(),
+                });
 
-            // Add bug icon in gutter
-            gutter_decorations.push(GutterDecoration {
-                line: bug.line,
-                icon: "bug".to_string(),
-                severity: "error".to_string(),
-            });
+                let hover_md = format!(
+                    "### 🐛 DRY NIB BUG\n\n\
+                    **Operation:** `{}`\n\
+                    **Actual return:** {} bytes\n\
+                    **Buffer allocated:** {} bytes\n\
+                    **Wasted:** {} bytes\n\n\
+                    **Overcharge:** {} ink ({:.1}%)\n\n\
+                    **Fix suggestion:** {}\n\n\
+                    **Function:** `{}`",
+                    bug.operation,
+                    bug.actual_return_size,
+                    bug.buffer_allocated,
+                    bug.buffer_allocated - bug.actual_return_size,
+                    bug.overcharge_estimate,
+                    (bug.overcharge_estimate as f64 / bug.expected_fair_cost as f64 * 100.0),
+                    bug.mitigation,
+                    func.name
+                );
 
-            // Add detailed hover
-            let hover_md = format!(
-                "### 🐛 DRY NIB BUG DETECTED\n\n\
-                **Operation:** `{}`  \n\
-                **Actual return:** {} bytes  \n\
-                **Buffer allocated:** {} bytes  \n\
-                **Wastage:** {} bytes  \n\n\
-                **Ink overcharge:** {} ({:.1}%)  \n\n\
-                💡 **Mitigation:** {}",
-                bug.operation,
-                bug.actual_return_size,
-                bug.buffer_allocated,
-                bug.buffer_allocated - bug.actual_return_size,
-                bug.overcharge_estimate,
-                (bug.overcharge_estimate as f64 / bug.expected_fair_cost as f64 * 100.0),
-                bug.mitigation
-            );
+                hover_decorations.push(HoverDecoration {
+                    line,
+                    markdown: hover_md,
+                });
 
-            hover_decorations.push(HoverDecoration {
-                line: bug.line,
-                markdown: hover_md,
-            });
+                code_actions.push(CodeAction {
+                    line,
+                    title: format!("Fix dry nib: {}", bug.operation),
+                    replacement: Replacement {
+                        start_line: line,
+                        end_line: line,
+                        new_text: format!("// TODO: {}", bug.mitigation),
+                    },
+                });
+            }
 
-            // Add code action
-            code_actions.push(CodeAction {
-                line: bug.line,
-                title: format!("🐛 Fix dry nib bug: {}", bug.operation),
-                replacement: Replacement {
-                    start_line: bug.line,
-                    end_line: bug.line,
-                    new_text: format!("// {}", bug.mitigation),
-                },
-            });
-        }
+            // Optimizations
+            for opt in &func.optimizations {
+                let line = opt.line;
 
-        // Generate code actions for optimizations
-        for opt in &func.optimizations {
-            code_actions.push(CodeAction {
-                line: opt.line,
-                title: format!("💡 {}", opt.title),
-                replacement: Replacement {
-                    start_line: opt.line,
-                    end_line: opt.line,
-                    new_text: opt.suggested_code.clone(),
-                },
-            });
+                gutter_decorations.push(GutterDecoration {
+                    line,
+                    icon: "lightbulb".to_string(),
+                    severity: "warning".to_string(),
+                });
 
-            gutter_decorations.push(GutterDecoration {
-                line: opt.line,
-                icon: "lightbulb".to_string(),
-                severity: "warning".to_string(),
-            });
+                code_actions.push(CodeAction {
+                    line,
+                    title: opt.title.clone(),
+                    replacement: Replacement {
+                        start_line: line,
+                        end_line: line,
+                        new_text: opt.suggested_code.clone(),
+                    },
+                });
+            }
         }
 
         Ok(VsCodeDecorations {
             file: analysis.file.clone(),
-            function: func.name.clone(),
-            total_ink: func.total_ink,
-            gas_equivalent: func.gas_equivalent,
+            function: "All Functions".to_string(),
+            total_ink,
+            gas_equivalent: total_gas,
             decorations: Decorations {
                 inline: inline_decorations,
                 gutter: gutter_decorations,
@@ -498,12 +500,158 @@ impl Reporter {
             },
         })
     }
-}
 
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
+    /// Prints compact summary for a single function.
+    ///
+    /// Includes:
+    /// - Function signature and total ink/gas
+    /// - Dry-nib bugs (if present)
+    /// - Most expensive lines (threshold: ≥800K ink)
+    /// - Optimization suggestions
+    fn print_function_compact(&self, func: &FunctionAnalysis) -> Result<()> {
+        let use_color = self.use_color;
+
+        if use_color {
+            println!("\n🎯 {}", func.signature.bright_white().bold());
+            println!(
+                "💰 Total: {} ink  (≈ {} gas)",
+                func.total_ink.to_string().bright_yellow(),
+                func.gas_equivalent.to_string().bright_yellow()
+            );
+            println!("{}", "─".repeat(60).dimmed());
+        } else {
+            println!("\nFunction: {}", func.signature);
+            println!(
+                "Total: {} ink (≈ {} gas)",
+                func.total_ink, func.gas_equivalent
+            );
+            println!("{}", "=".repeat(60));
+        }
+
+        if !func.dry_nib_bugs.is_empty() {
+            self.print_dry_nib_bugs(&func.dry_nib_bugs)?;
+        }
+
+        let mut line_summary: HashMap<usize, LineSummary> = HashMap::new();
+
+        for op in &func.operations {
+            let entry = line_summary.entry(op.line).or_insert(LineSummary {
+                total_ink: 0,
+                op_count: 0,
+                max_severity: "low".to_string(),
+                operations: vec![],
+                representative_name: String::new(),
+            });
+
+            entry.total_ink += op.ink;
+            entry.op_count += 1;
+            entry.operations.push(op);
+
+            if op.severity == "high" {
+                entry.max_severity = "high".to_string();
+            } else if op.severity == "medium" && entry.max_severity == "low" {
+                entry.max_severity = "medium".to_string();
+            }
+
+            if entry.representative_name.is_empty() {
+                entry.representative_name = if op.entity != "unknown" {
+                    format!("{}::{}", op.entity, op.operation)
+                } else {
+                    op.operation.clone()
+                };
+            }
+        }
+
+        let mut sorted_lines: Vec<(usize, &LineSummary)> = line_summary
+            .iter()
+            .map(|(line, summary)| (*line, summary))
+            .collect();
+        sorted_lines.sort_by(|a, b| b.1.total_ink.cmp(&a.1.total_ink));
+
+        if use_color {
+            println!("\n{}", "🔥 Expensive Lines".bright_red().bold());
+        } else {
+            println!("\nExpensive Lines");
+        }
+
+        for (line, summary) in sorted_lines {
+            if summary.total_ink < 800_000 {
+                continue;
+            }
+
+            let percentage = if func.total_ink > 0 {
+                summary.total_ink as f64 / func.total_ink as f64 * 100.0
+            } else {
+                0.0
+            };
+
+            let ink_display = if summary.total_ink >= 1_000_000 {
+                format!("{:.1}M", summary.total_ink as f64 / 1_000_000.0)
+            } else {
+                format!("{}K", summary.total_ink / 1000)
+            };
+
+            let bar_width = (percentage / 5.0).min(20.0) as usize;
+            let bar = "█".repeat(bar_width);
+
+            let severity_marker = if summary.max_severity == "high" {
+                " 🔥".bright_red().to_string()
+            } else if summary.max_severity == "medium" {
+                " ⚠️".yellow().to_string()
+            } else {
+                "".to_string()
+            };
+
+            if use_color {
+                println!(
+                    "  Line {:4} │ {:<38} {:>6} ink  {:>5.1}%  {}{}",
+                    line.to_string().bright_white(),
+                    summary.representative_name.bright_white(),
+                    ink_display.bright_yellow(),
+                    percentage,
+                    bar.bright_red(),
+                    severity_marker
+                );
+            } else {
+                println!(
+                    "  Line {:4} | {:<38} {:>6} ink  {:>5.1}%  {}",
+                    line, summary.representative_name, ink_display, percentage, bar
+                );
+            }
+        }
+
+        if !func.optimizations.is_empty() {
+            if use_color {
+                println!("\n{}", "💡 Optimizations".bright_green().bold());
+            } else {
+                println!("\nOptimizations");
+            }
+
+            for opt in &func.optimizations {
+                if use_color {
+                    println!(
+                        "  Line {:4} │ {}  (savings ~{}K ink)",
+                        opt.line.to_string().bright_white(),
+                        opt.title.bright_yellow(),
+                        (opt.estimated_savings_ink / 1000).to_string().bright_cyan()
+                    );
+                } else {
+                    println!(
+                        "  Line {:4} | {}  (savings ~{}K ink)",
+                        opt.line,
+                        opt.title,
+                        opt.estimated_savings_ink / 1000
+                    );
+                }
+            }
+        }
+
+        if use_color {
+            println!("{}", "─".repeat(60).dimmed());
+        } else {
+            println!("{}", "-".repeat(60));
+        }
+
+        Ok(())
     }
 }
